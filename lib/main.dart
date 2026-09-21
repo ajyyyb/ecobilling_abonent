@@ -1,122 +1,154 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
-void main() {
-  runApp(const MyApp());
+import 'core/app_theme.dart';
+import 'screens/main_screens.dart';
+import 'state/subscriber_state.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('ru');
+  runApp(const EcoBillingApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class EcoBillingApp extends StatefulWidget {
+  const EcoBillingApp({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<EcoBillingApp> createState() => _EcoBillingAppState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _EcoBillingAppState extends State<EcoBillingApp> {
+  final SubscriberUiState _state = SubscriberUiState();
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _state.loadSettings();
   }
 
   @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+  void dispose() {
+    _state.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ScreenUtilInit(
+    designSize: const Size(390, 844),
+    minTextAdapt: true,
+    splitScreenMode: true,
+    builder: (context, child) => SubscriberScope(
+      state: _state,
+      child: MaterialApp(
+        title: 'EcoBilling',
+        debugShowCheckedModeBanner: false,
+        theme: buildAppTheme(),
+        home: child,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+    ),
+    child: const AppShell(),
+  );
+}
+
+class AppShell extends StatefulWidget {
+  const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  int _selectedIndex = 0;
+
+  @override
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+    value: SystemUiOverlayStyle.dark.copyWith(
+      statusBarColor: AppColors.background,
+    ),
+    child: Scaffold(
+      body: SafeArea(
+        top: true,
+        bottom: false,
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: const [
+            HomeScreen(),
+            ConsumptionScreen(),
+            PaymentsScreen(),
+            ProfileScreen(),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      bottomNavigationBar: _BottomBar(
+        selectedIndex: _selectedIndex,
+        onSelected: (index) => setState(() => _selectedIndex = index),
       ),
-    );
-  }
+    ),
+  );
+}
+
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({required this.selectedIndex, required this.onSelected});
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  static const _items = [
+    (Icons.home_rounded, 'Главная'),
+    (Icons.bar_chart_rounded, 'Расход'),
+    (Icons.account_balance_wallet_outlined, 'Платежи'),
+    (Icons.person_outline_rounded, 'Профиль'),
+  ];
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: const BoxDecoration(
+      color: Colors.white,
+      border: Border(top: BorderSide(color: AppColors.border)),
+    ),
+    child: SafeArea(
+      top: false,
+      child: SizedBox(
+        height: 58.h,
+        child: Row(
+          children: List.generate(_items.length, (index) {
+            final selected = selectedIndex == index;
+            return Expanded(
+              child: InkWell(
+                onTap: () => onSelected(index),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _items[index].$1,
+                      size: 21.r,
+                      color: selected
+                          ? AppColors.blue
+                          : const Color(0xFF98A2B3),
+                    ),
+                    SizedBox(height: 3.h),
+                    Text(
+                      _items[index].$2,
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        height: 1,
+                        color: selected
+                            ? AppColors.blueDark
+                            : AppColors.secondary,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    ),
+  );
 }
