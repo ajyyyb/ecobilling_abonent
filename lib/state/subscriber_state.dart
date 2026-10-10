@@ -1,56 +1,83 @@
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class PaymentRecord {
-  PaymentRecord({
-    required this.date,
-    required this.amount,
-    required this.id,
-    this.paid = true,
-  });
-  final DateTime date;
-  final int amount;
-  final String id;
-  final bool paid;
-}
+import '../data/models.dart';
+import '../data/resident_repository.dart';
 
 class SubscriberUiState extends ChangeNotifier {
-  String firstName = 'Нурбек';
-  String lastName = 'Асанов';
-  String phone = '+996 555 12 34 56';
-  final String accountNumber = '001245';
-  final String address = 'г. Бишкек, ул. Манас 19';
-  final String meterNumber = 'W-445982';
-  int previousReading = 125;
-  int currentReading = 132;
-  int currentBill = 580;
+  final ResidentRepository _repository;
+
+  SubscriberUiState(this._repository);
+
+  ResidentProfile? profile;
+  ResidentAccount? account;
+  List<ResidentMeter> meters = [];
+  List<ResidentReading> readings = [];
+  List<ResidentCharge> charges = [];
+  List<ResidentPayment> payments = [];
+  ResidentFinancial? financial;
+
+  bool isLoadingInitial = true;
+  bool isRefreshing = false;
+  String? loadError;
+
+  // Local-only UI preferences; backend has no endpoint for these.
   String language = 'Русский';
   bool paymentReminders = true;
   bool smsNotifications = true;
   bool pushNotifications = true;
   bool settingsLoaded = false;
-  final List<PaymentRecord> paymentHistory = [
-    PaymentRecord(
-      date: DateTime(2026, 8, 25),
-      amount: 290,
-      id: 'TXN-2026-000123',
-    ),
-    PaymentRecord(
-      date: DateTime(2026, 7, 25),
-      amount: 310,
-      id: 'TXN-2026-000108',
-    ),
-    PaymentRecord(
-      date: DateTime(2026, 6, 25),
-      amount: 280,
-      id: 'TXN-2026-000094',
-    ),
-  ];
 
-  int get monthlyUsage => (currentReading - previousReading).clamp(0, 999999);
-  String get fullName => '$lastName $firstName';
-  String get initials =>
-      '${firstName.substring(0, 1)}${lastName.substring(0, 1)}';
+  String get fullName => profile?.fullName ?? '—';
+
+  String get initials {
+    final name = profile?.fullName.trim() ?? '';
+    if (name.isEmpty) return '?';
+    final parts = name
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return '${parts[0].substring(0, 1)}${parts[1].substring(0, 1)}'
+        .toUpperCase();
+  }
+
+  String get accountNumber => account?.accountNumber ?? '—';
+  String get address => account?.address ?? '—';
+
+  ResidentMeter? get primaryMeter {
+    if (meters.isEmpty) return null;
+    return meters.firstWhere((m) => m.isActive, orElse: () => meters.first);
+  }
+
+  List<ResidentReading> get primaryMeterReadings {
+    final meter = primaryMeter;
+    if (meter == null) return const [];
+    final filtered = readings.where((r) => r.meterId == meter.meterId).toList()
+      ..sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
+    return filtered;
+  }
+
+  double get currentReading =>
+      primaryMeterReadings.isNotEmpty ? primaryMeterReadings.first.value : 0;
+
+  double get previousReading => primaryMeterReadings.length > 1
+      ? primaryMeterReadings[1].value
+      : currentReading;
+
+  double get monthlyUsage =>
+      (currentReading - previousReading).clamp(0, 999999);
+
+  double get outstandingDebt => financial?.outstandingDebt ?? 0;
+  double get overpayment => financial?.overpayment ?? 0;
+  String get currency => financial?.currency ?? 'сом';
+
+  List<ResidentCharge> get sortedCharges =>
+      [...charges]..sort((a, b) => b.periodEnd.compareTo(a.periodEnd));
+
+  List<ResidentPayment> get sortedPayments =>
+      [...payments]..sort((a, b) => b.paidAt.compareTo(a.paidAt));
 
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -86,36 +113,34 @@ class SubscriberUiState extends ChangeNotifier {
     await prefs.setString('language', value);
   }
 
-  void saveProfile({
-    required String first,
-    required String last,
-    required String newPhone,
-  }) {
-    firstName = first.trim();
-    lastName = last.trim();
-    phone = newPhone.trim();
+  /// Initial load right after login/session restore, and pull-to-refresh.
+  /// On failure the previously loaded data is kept on screen — only
+  /// [loadError] is set so the UI can show a retry affordance.
+  Future<void> loadAll() async {
+    final isFirstLoad = profile == null;
+    if (isFirstLoad) {
+      isLoadingInitial = true;
+    } else {
+      isRefreshing = true;
+    }
+    loadError = null;
     notifyListeners();
-  }
 
-  void saveReading(int value) {
-    previousReading = currentReading;
-    currentReading = value;
-    notifyListeners();
-  }
-
-  void completePayment() {
-    if (currentBill > 0) {
-      final amount = currentBill;
-      final now = DateTime.now();
-      paymentHistory.insert(
-        0,
-        PaymentRecord(
-          date: now,
-          amount: amount,
-          id: 'TXN-${now.year}-${(paymentHistory.length + 124).toString().padLeft(6, '0')}',
-        ),
-      );
-      currentBill = 0;
+    try {
+      final data = await _repository.loadAll();
+      profile = data.profile;
+      account = data.account;
+      meters = data.meters;
+      readings = data.readings;
+      charges = data.charges;
+      payments = data.payments;
+      financial = data.financial;
+    } catch (e) {
+      loadError =
+          'Не удалось загрузить данные. Проверьте подключение к интернету';
+    } finally {
+      isLoadingInitial = false;
+      isRefreshing = false;
       notifyListeners();
     }
   }

@@ -4,10 +4,15 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 
 import '../core/app_theme.dart';
+import '../data/models.dart';
+import '../state/auth_controller.dart';
 import '../state/subscriber_state.dart';
 import '../widgets/flows.dart';
 import '../widgets/ui_components.dart';
 import 'secondary_screens.dart';
+
+String _formatDate(DateTime date) =>
+    DateFormat('d MMMM yyyy', 'ru').format(date);
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -15,116 +20,175 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = SubscriberScope.of(context);
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(18.w, 18.h, 18.w, 24.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Добрый день,',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        color: AppColors.secondary,
-                      ),
-                    ),
-                    SizedBox(height: 2.h),
-                    Text(
-                      '${state.firstName}!',
-                      style: TextStyle(
-                        fontSize: 29.sp,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -.5,
-                        color: AppColors.text,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Спасибо, что заботитесь о нашем городе',
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        color: AppColors.secondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(width: 10.w),
-              _SquareAction(
-                icon: Icons.notifications_none_rounded,
-                label: 'Уведомления',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const NotificationsScreen(),
-                  ),
-                ),
-              ),
+    return RefreshIndicator(
+      color: AppColors.blue,
+      onRefresh: state.loadAll,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(18.w, 18.h, 18.w, 24.h),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (state.loadError != null) ...[
+              _RefreshErrorBanner(message: state.loadError!),
+              SizedBox(height: 14.h),
             ],
-          ),
-          SizedBox(height: 22.h),
-          _BillHero(state: state),
-          SizedBox(height: 16.h),
-          Row(
-            children: [
-              Expanded(
-                child: _StatCard(
-                  icon: Icons.water_drop_rounded,
-                  title: 'Последнее показание',
-                  value: '${state.currentReading} м³',
-                  foot: 'от 12.09.2026',
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _StatCard(
-                  icon: Icons.bar_chart_rounded,
-                  title: 'Расход за месяц',
-                  value: '${state.monthlyUsage} м³',
-                  foot: 'чем в прошлом месяце',
-                  badge: '↓ 12%',
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 14.h),
-          AppCard(
-            onTap: () => showMeterReadingFlow(context, state),
-            padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 14.h),
-            child: Row(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                IconBadge(Icons.info_outline_rounded, size: 38),
-                SizedBox(width: 12.w),
                 Expanded(
-                  child: Text(
-                    'Не забудьте передать показания\nв следующем месяце',
-                    style: TextStyle(
-                      fontSize: 13.sp,
-                      height: 1.4,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Добрый день,',
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          color: AppColors.secondary,
+                        ),
+                      ),
+                      SizedBox(height: 2.h),
+                      Text(
+                        '${state.fullName}!',
+                        style: TextStyle(
+                          fontSize: 29.sp,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.5,
+                          color: AppColors.text,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        'Спасибо, что заботитесь о нашем городе',
+                        style: TextStyle(
+                          fontSize: 13.sp,
+                          color: AppColors.secondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.blueDark,
-                  size: 23.r,
+                SizedBox(width: 10.w),
+                _SquareAction(
+                  icon: Icons.notifications_none_rounded,
+                  label: 'Уведомления',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
+                    ),
+                  ),
                 ),
               ],
             ),
-          ),
-          SizedBox(height: 14.h),
-          _WaterSavingBanner(),
-        ],
+            SizedBox(height: 22.h),
+            _BillHero(state: state),
+            SizedBox(height: 16.h),
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.water_drop_rounded,
+                    title: 'Последнее показание',
+                    value: '${state.currentReading.toStringAsFixed(0)} м³',
+                    foot: state.primaryMeterReadings.isNotEmpty
+                        ? 'от ${_formatDate(state.primaryMeterReadings.first.measuredAt)}'
+                        : 'Нет данных',
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.bar_chart_rounded,
+                    title: 'Расход за месяц',
+                    value: '${state.monthlyUsage.toStringAsFixed(0)} м³',
+                    foot: 'по показаниям счётчика',
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 14.h),
+            AppCard(
+              onTap: () => showMeterReadingFlow(context, state),
+              padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 14.h),
+              child: Row(
+                children: [
+                  IconBadge(Icons.info_outline_rounded, size: 38),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Text(
+                      'Не забудьте передать показания\nв следующем месяце',
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        height: 1.4,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.blueDark,
+                    size: 23.r,
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 14.h),
+            _WaterSavingBanner(),
+          ],
+        ),
       ),
     );
   }
+}
+
+class _RefreshableScroll extends StatelessWidget {
+  const _RefreshableScroll({
+    required this.onRefresh,
+    required this.padding,
+    required this.child,
+  });
+  final Future<void> Function() onRefresh;
+  final EdgeInsetsGeometry padding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => RefreshIndicator(
+    color: AppColors.blue,
+    onRefresh: onRefresh,
+    child: SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: padding,
+      child: child,
+    ),
+  );
+}
+
+class _RefreshErrorBanner extends StatelessWidget {
+  const _RefreshErrorBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFF4ED),
+      borderRadius: BorderRadius.circular(14.r),
+      border: Border.all(color: AppColors.warning.withValues(alpha: .3)),
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.wifi_off_rounded, size: 18.r, color: AppColors.warning),
+        SizedBox(width: 10.w),
+        Expanded(
+          child: Text(
+            message,
+            style: TextStyle(fontSize: 12.sp, color: AppColors.secondary),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _SquareAction extends StatelessWidget {
@@ -212,7 +276,7 @@ class _BillHero extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              '${state.currentBill}',
+              state.outstandingDebt.toStringAsFixed(0),
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 42.sp,
@@ -224,7 +288,7 @@ class _BillHero extends StatelessWidget {
             Padding(
               padding: EdgeInsets.only(left: 9.w, bottom: 5.h),
               child: Text(
-                'сом',
+                state.currency,
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 23.sp,
@@ -233,7 +297,7 @@ class _BillHero extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            if (state.currentBill == 0) const StatusChip(label: 'Оплачено'),
+            if (state.outstandingDebt <= 0) const StatusChip(label: 'Оплачено'),
           ],
         ),
         SizedBox(height: 16.h),
@@ -251,33 +315,35 @@ class _BillHero extends StatelessWidget {
               elevation: 0,
             ),
             child: Text(
-              state.currentBill == 0 ? 'Счет оплачен' : 'Оплатить',
+              state.outstandingDebt <= 0 ? 'Счет оплачен' : 'Оплатить',
               style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
             ),
           ),
         ),
-        SizedBox(height: 12.h),
-        Row(
-          children: [
-            Icon(
-              Icons.calendar_today_rounded,
-              color: Colors.white.withValues(alpha: .9),
-              size: 14.r,
-            ),
-            SizedBox(width: 7.w),
-            Expanded(
-              child: Text(
-                'Срок оплаты: до 25 сентября 2026',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: .95),
-                  fontSize: 12.sp,
+        if (state.overpayment > 0) ...[
+          SizedBox(height: 12.h),
+          Row(
+            children: [
+              Icon(
+                Icons.savings_outlined,
+                color: Colors.white.withValues(alpha: .9),
+                size: 14.r,
+              ),
+              SizedBox(width: 7.w),
+              Expanded(
+                child: Text(
+                  'Переплата: ${state.overpayment.toStringAsFixed(0)} ${state.currency}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .95),
+                    fontSize: 12.sp,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ],
     ),
   );
@@ -410,16 +476,42 @@ class ConsumptionScreen extends StatefulWidget {
 class _ConsumptionScreenState extends State<ConsumptionScreen> {
   int period = 0;
 
+  List<(String, double)> _monthlySeries(SubscriberUiState state) {
+    final charges = [...state.sortedCharges.reversed];
+    final recent = charges.length > 6
+        ? charges.sublist(charges.length - 6)
+        : charges;
+    return recent
+        .map(
+          (c) => (DateFormat('LLL', 'ru').format(c.periodEnd), c.consumption),
+        )
+        .toList();
+  }
+
+  List<(String, double)> _yearlySeries(SubscriberUiState state) {
+    final totals = <int, double>{};
+    for (final c in state.charges) {
+      totals.update(
+        c.periodEnd.year,
+        (v) => v + c.consumption,
+        ifAbsent: () => c.consumption,
+      );
+    }
+    final years = totals.keys.toList()..sort();
+    return years.map((y) => ('$y', totals[y]!)).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = SubscriberScope.of(context);
-    final labels = period == 0
-        ? ['Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен']
-        : ['2022', '2023', '2024', '2025', '2026'];
-    final values = period == 0
-        ? [6.0, 8.0, 10.0, 7.0, 9.0, state.monthlyUsage.toDouble()]
-        : [82.0, 90.0, 84.0, 88.0, 73.0];
-    return SingleChildScrollView(
+    final series = period == 0 ? _monthlySeries(state) : _yearlySeries(state);
+    final labels = series.map((e) => e.$1).toList();
+    final values = series.map((e) => e.$2).toList();
+    final maxValue = values.isEmpty
+        ? 10.0
+        : values.reduce((a, b) => a > b ? a : b);
+    return _RefreshableScroll(
+      onRefresh: state.loadAll,
       padding: EdgeInsets.fromLTRB(18.w, 20.h, 18.w, 24.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -452,73 +544,79 @@ class _ConsumptionScreenState extends State<ConsumptionScreen> {
                   ),
                 ),
                 SizedBox(height: 16.h),
-                SizedBox(
-                  height: 190.h,
-                  child: BarChart(
-                    BarChartData(
-                      maxY: period == 0 ? 12 : 100,
-                      minY: 0,
-                      alignment: BarChartAlignment.spaceAround,
-                      gridData: const FlGridData(show: false),
-                      borderData: FlBorderData(show: false),
-                      barTouchData: BarTouchData(enabled: false),
-                      titlesData: FlTitlesData(
-                        topTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        leftTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        rightTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 25,
-                            getTitlesWidget: (value, meta) {
-                              final index = value.toInt();
-                              if (index < 0 || index >= labels.length) {
-                                return const SizedBox.shrink();
-                              }
-                              return Padding(
-                                padding: EdgeInsets.only(top: 8.h),
-                                child: Text(
-                                  labels[index],
-                                  style: TextStyle(
-                                    fontSize: 11.sp,
-                                    color: AppColors.secondary,
+                if (values.isEmpty)
+                  const EmptyState(
+                    title: 'Пока нет данных о начислениях',
+                    message: 'График появится после первого начисления.',
+                  )
+                else
+                  SizedBox(
+                    height: 190.h,
+                    child: BarChart(
+                      BarChartData(
+                        maxY: maxValue * 1.2,
+                        minY: 0,
+                        alignment: BarChartAlignment.spaceAround,
+                        gridData: const FlGridData(show: false),
+                        borderData: FlBorderData(show: false),
+                        barTouchData: BarTouchData(enabled: false),
+                        titlesData: FlTitlesData(
+                          topTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          leftTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          rightTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              reservedSize: 25,
+                              getTitlesWidget: (value, meta) {
+                                final index = value.toInt();
+                                if (index < 0 || index >= labels.length) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Padding(
+                                  padding: EdgeInsets.only(top: 8.h),
+                                  child: Text(
+                                    labels[index],
+                                    style: TextStyle(
+                                      fontSize: 11.sp,
+                                      color: AppColors.secondary,
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
+                                );
+                              },
+                            ),
                           ),
                         ),
-                      ),
-                      barGroups: List.generate(
-                        values.length,
-                        (index) => BarChartGroupData(
-                          x: index,
-                          barRods: [
-                            BarChartRodData(
-                              toY: values[index],
-                              color: index == values.length - 1
-                                  ? AppColors.blue
-                                  : const Color(0xFFB7E3FF),
-                              width: period == 0 ? 26.w : 35.w,
-                              borderRadius: BorderRadius.vertical(
-                                top: Radius.circular(7.r),
+                        barGroups: List.generate(
+                          values.length,
+                          (index) => BarChartGroupData(
+                            x: index,
+                            barRods: [
+                              BarChartRodData(
+                                toY: values[index],
+                                color: index == values.length - 1
+                                    ? AppColors.blue
+                                    : const Color(0xFFB7E3FF),
+                                width: period == 0 ? 26.w : 35.w,
+                                borderRadius: BorderRadius.vertical(
+                                  top: Radius.circular(7.r),
+                                ),
+                                backDrawRodData: BackgroundBarChartRodData(
+                                  show: false,
+                                ),
                               ),
-                              backDrawRodData: BackgroundBarChartRodData(
-                                show: false,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -531,8 +629,10 @@ class _ConsumptionScreenState extends State<ConsumptionScreen> {
                 Expanded(
                   child: _ReadingValue(
                     label: 'Предыдущее',
-                    value: '${state.previousReading} м³',
-                    date: 'от 10.08.2026',
+                    value: '${state.previousReading.toStringAsFixed(0)} м³',
+                    date: state.primaryMeterReadings.length > 1
+                        ? 'от ${_formatDate(state.primaryMeterReadings[1].measuredAt)}'
+                        : 'Нет данных',
                   ),
                 ),
                 Container(
@@ -544,8 +644,10 @@ class _ConsumptionScreenState extends State<ConsumptionScreen> {
                 Expanded(
                   child: _ReadingValue(
                     label: 'Текущее',
-                    value: '${state.currentReading} м³',
-                    date: 'от 12.09.2026',
+                    value: '${state.currentReading.toStringAsFixed(0)} м³',
+                    date: state.primaryMeterReadings.isNotEmpty
+                        ? 'от ${_formatDate(state.primaryMeterReadings.first.measuredAt)}'
+                        : 'Нет данных',
                   ),
                 ),
               ],
@@ -571,7 +673,7 @@ class _ConsumptionScreenState extends State<ConsumptionScreen> {
                       ),
                       SizedBox(height: 4.h),
                       Text(
-                        '${state.monthlyUsage} м³',
+                        '${state.monthlyUsage.toStringAsFixed(0)} м³',
                         style: TextStyle(
                           fontSize: 23.sp,
                           fontWeight: FontWeight.w700,
@@ -579,27 +681,6 @@ class _ConsumptionScreenState extends State<ConsumptionScreen> {
                       ),
                     ],
                   ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '↓ 12%',
-                      style: TextStyle(
-                        color: AppColors.success,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13.sp,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'чем в прошлом месяце',
-                      style: TextStyle(
-                        color: AppColors.secondary,
-                        fontSize: 10.sp,
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
@@ -694,12 +775,12 @@ class PaymentsScreen extends StatefulWidget {
 
 class _PaymentsScreenState extends State<PaymentsScreen> {
   int tab = 0;
-  String filter = 'Все';
 
   @override
   Widget build(BuildContext context) {
     final state = SubscriberScope.of(context);
-    return SingleChildScrollView(
+    return _RefreshableScroll(
+      onRefresh: state.loadAll,
       padding: EdgeInsets.fromLTRB(18.w, 20.h, 18.w, 24.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -728,137 +809,105 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
   }
 
-  Widget _currentBill(BuildContext context, SubscriberUiState state) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      AppCard(
-        padding: EdgeInsets.all(15.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'За сентябрь 2026',
-              style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
-            ),
-            SizedBox(height: 15.h),
-            _BillLine(
-              title: 'Водоснабжение',
-              detail: '${state.monthlyUsage} м³ × 20 сом',
-              amount: '${state.monthlyUsage * 20} сом',
-            ),
-            SizedBox(height: 14.h),
-            const _BillLine(title: 'Услуги', amount: '150 сом'),
-            SizedBox(height: 14.h),
-            const _BillLine(title: 'Старый долг', amount: '290 сом'),
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 15.h),
-              child: const Divider(height: 1),
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Итого к оплате',
-                    style: TextStyle(
-                      fontSize: 15.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${state.currentBill} сом',
-                  style: TextStyle(
-                    fontSize: 22.sp,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 15.h),
-            if (state.currentBill > 0)
-              PrimaryButton(
-                label: 'Оплатить ${state.currentBill} сом',
-                icon: Icons.account_balance_wallet_outlined,
-                onPressed: () => showPaymentFlow(context, state),
-              )
-            else
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(vertical: 13.h),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAFBF3),
-                  borderRadius: BorderRadius.circular(13.r),
-                ),
-                child: const Center(child: StatusChip(label: 'Оплачено')),
-              ),
-          ],
-        ),
-      ),
-      SizedBox(height: 20.h),
-      SectionTitle(
-        'Последние платежи',
-        trailing: 'Все',
-        onTrailingTap: () => setState(() => tab = 1),
-      ),
-      AppCard(
-        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 2.h),
-        child: _paymentRows(
-          context,
-          state,
-          state.paymentHistory.take(3).toList(),
-        ),
-      ),
-    ],
-  );
+  Widget _currentBill(BuildContext context, SubscriberUiState state) {
+    final latestCharge = state.sortedCharges.isNotEmpty
+        ? state.sortedCharges.first
+        : null;
 
-  Widget _history(BuildContext context, SubscriberUiState state) {
-    final visible = state.paymentHistory.where((payment) {
-      if (filter == 'Оплачено') return payment.paid;
-      if (filter == 'Ожидает') return !payment.paid;
-      return true;
-    }).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8.w,
-          children: ['Все', 'Оплачено', 'Ожидает']
-              .map(
-                (label) => ChoiceChip(
-                  label: Text(label),
-                  selected: filter == label,
-                  onSelected: (_) => setState(() => filter = label),
-                  selectedColor: AppColors.paleBlue,
-                  backgroundColor: Colors.white,
-                  side: BorderSide(
-                    color: filter == label
-                        ? AppColors.paleBlue
-                        : AppColors.border,
-                  ),
-                  labelStyle: TextStyle(
-                    color: filter == label
-                        ? AppColors.blueDark
-                        : AppColors.secondary,
-                    fontSize: 12.sp,
-                  ),
-                  visualDensity: VisualDensity.compact,
+        AppCard(
+          padding: EdgeInsets.all(15.w),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                latestCharge != null
+                    ? 'За ${_formatDate(latestCharge.periodEnd)}'
+                    : 'Начислений пока нет',
+                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
+              ),
+              if (latestCharge != null) ...[
+                SizedBox(height: 15.h),
+                _BillLine(
+                  title: 'Водоснабжение',
+                  detail: '${latestCharge.consumption.toStringAsFixed(0)} м³',
+                  amount:
+                      '${latestCharge.amount.toStringAsFixed(0)} ${latestCharge.currency}',
                 ),
-              )
-              .toList(),
-        ),
-        SizedBox(height: 12.h),
-        if (visible.isEmpty)
-          const AppCard(
-            child: EmptyState(
-              title: 'История платежей пока пуста',
-              message: 'Здесь появятся ваши платежи.',
-            ),
-          )
-        else
-          AppCard(
-            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 2.h),
-            child: _paymentRows(context, state, visible),
+              ],
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 15.h),
+                child: const Divider(height: 1),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Итого к оплате',
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${state.outstandingDebt.toStringAsFixed(0)} ${state.currency}',
+                    style: TextStyle(
+                      fontSize: 22.sp,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 15.h),
+              if (state.outstandingDebt > 0)
+                PrimaryButton(
+                  label:
+                      'Оплатить ${state.outstandingDebt.toStringAsFixed(0)} ${state.currency}',
+                  icon: Icons.account_balance_wallet_outlined,
+                  onPressed: () => showPaymentFlow(context, state),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(vertical: 13.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAFBF3),
+                    borderRadius: BorderRadius.circular(13.r),
+                  ),
+                  child: const Center(child: StatusChip(label: 'Оплачено')),
+                ),
+            ],
           ),
+        ),
+        SizedBox(height: 20.h),
+        SectionTitle(
+          'Последние платежи',
+          trailing: 'Все',
+          onTrailingTap: () => setState(() => tab = 1),
+        ),
+        AppCard(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 2.h),
+          child: _paymentRows(
+            context,
+            state,
+            state.sortedPayments.take(3).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _history(BuildContext context, SubscriberUiState state) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppCard(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 2.h),
+          child: _paymentRows(context, state, state.sortedPayments),
+        ),
       ],
     );
   }
@@ -866,7 +915,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   Widget _paymentRows(
     BuildContext context,
     SubscriberUiState state,
-    List<PaymentRecord> payments,
+    List<ResidentPayment> payments,
   ) {
     if (payments.isEmpty) {
       return const EmptyState(
@@ -878,7 +927,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       children: [
         for (var index = 0; index < payments.length; index++) ...[
           InkWell(
-            key: ValueKey(payments[index].id),
+            key: ValueKey(payments[index].paymentId),
             onTap: () => showPaymentDetails(context, state, payments[index]),
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 13.h),
@@ -886,10 +935,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      DateFormat(
-                        'd MMMM yyyy',
-                        'ru',
-                      ).format(payments[index].date),
+                      _formatDate(payments[index].paidAt),
                       style: TextStyle(
                         fontSize: 13.sp,
                         color: AppColors.secondary,
@@ -897,29 +943,22 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                     ),
                   ),
                   Text(
-                    '${payments[index].amount} сом',
+                    '${payments[index].amount.toStringAsFixed(0)} ${state.currency}',
                     style: TextStyle(
                       fontSize: 13.sp,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                   SizedBox(width: 8.w),
-                  Icon(
-                    payments[index].paid ? Icons.check_circle : Icons.schedule,
-                    color: payments[index].paid
-                        ? AppColors.success
-                        : AppColors.warning,
-                    size: 17.r,
+                  const Icon(
+                    Icons.check_circle,
+                    color: AppColors.success,
+                    size: 17,
                   ),
                   SizedBox(width: 4.w),
                   Text(
-                    payments[index].paid ? 'Оплачено' : 'Ожидает',
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: payments[index].paid
-                          ? AppColors.success
-                          : AppColors.warning,
-                    ),
+                    'Оплачено',
+                    style: TextStyle(fontSize: 12.sp, color: AppColors.success),
                   ),
                 ],
               ),
@@ -1070,13 +1109,10 @@ class ProfileScreen extends StatelessWidget {
                 InfoRow(
                   icon: Icons.speed_outlined,
                   label: 'Номер счётчика',
-                  value: state.meterNumber,
-                ),
-                const Divider(height: 1),
-                InfoRow(
-                  icon: Icons.phone_outlined,
-                  label: 'Телефон',
-                  value: state.phone,
+                  value: state.primaryMeter != null
+                      ? '№ ${state.primaryMeter!.serialNumber}'
+                            '${state.meters.length > 1 ? ' (+${state.meters.length - 1})' : ''}'
+                      : '—',
                 ),
               ],
             ),
@@ -1176,7 +1212,7 @@ class ProfileScreen extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Выйти из аккаунта?'),
-        content: const Text('Это завершит текущий демо-сеанс.'),
+        content: const Text('Вы действительно хотите выйти из учётной записи?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -1193,7 +1229,7 @@ class ProfileScreen extends StatelessWidget {
       ),
     );
     if (result == true && context.mounted) {
-      showAppSnack(context, 'Демо-выход выполнен');
+      await AuthScope.of(context).logout();
     }
   }
 }

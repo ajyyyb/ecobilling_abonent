@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/app_theme.dart';
+import 'data/resident_repository.dart';
+import 'screens/auth_screens.dart';
 import 'screens/main_screens.dart';
+import 'state/auth_controller.dart';
 import 'state/subscriber_state.dart';
+import 'widgets/ui_components.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,24 +20,39 @@ Future<void> main() async {
 }
 
 class EcoBillingApp extends StatefulWidget {
-  const EcoBillingApp({super.key});
+  /// Tests inject their own fakes here instead of the real network-backed
+  /// defaults constructed in [initState].
+  const EcoBillingApp({super.key, this.authController, this.subscriberState});
+
+  final AuthController? authController;
+  final SubscriberUiState? subscriberState;
 
   @override
   State<EcoBillingApp> createState() => _EcoBillingAppState();
 }
 
 class _EcoBillingAppState extends State<EcoBillingApp> {
-  final SubscriberUiState _state = SubscriberUiState();
+  late final AuthController _authController;
+  late final SubscriberUiState _subscriberState;
 
   @override
   void initState() {
     super.initState();
-    _state.loadSettings();
+    _authController = widget.authController ?? AuthController();
+    _subscriberState =
+        widget.subscriberState ??
+        SubscriberUiState(ResidentRepository(_authController.dio));
+    _authController.onAuthenticated ??= () {
+      unawaited(_subscriberState.loadAll());
+    };
+    _subscriberState.loadSettings();
+    unawaited(_authController.restoreSession());
   }
 
   @override
   void dispose() {
-    _state.dispose();
+    _authController.dispose();
+    _subscriberState.dispose();
     super.dispose();
   }
 
@@ -40,17 +61,38 @@ class _EcoBillingAppState extends State<EcoBillingApp> {
     designSize: const Size(390, 844),
     minTextAdapt: true,
     splitScreenMode: true,
-    builder: (context, child) => SubscriberScope(
-      state: _state,
-      child: MaterialApp(
-        title: 'EcoBilling',
-        debugShowCheckedModeBanner: false,
-        theme: buildAppTheme(),
-        home: child,
+    builder: (context, child) => AuthScope(
+      controller: _authController,
+      child: SubscriberScope(
+        state: _subscriberState,
+        child: MaterialApp(
+          title: 'EcoBilling',
+          debugShowCheckedModeBanner: false,
+          theme: buildAppTheme(),
+          home: child,
+        ),
       ),
     ),
-    child: const AppShell(),
+    child: const _RootGate(),
   );
+}
+
+class _RootGate extends StatelessWidget {
+  const _RootGate();
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = AuthScope.of(context);
+
+    return AnimatedBuilder(
+      animation: auth,
+      builder: (context, _) {
+        if (auth.isBootstrapping) return const SplashScreen();
+        if (!auth.isAuthenticated) return const LoginScreen();
+        return const AppShell();
+      },
+    );
+  }
 }
 
 class AppShell extends StatefulWidget {
@@ -64,30 +106,66 @@ class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
 
   @override
-  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-    value: SystemUiOverlayStyle.dark.copyWith(
-      statusBarColor: AppColors.background,
-    ),
-    child: Scaffold(
-      body: SafeArea(
-        top: true,
-        bottom: false,
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: const [
-            HomeScreen(),
-            ConsumptionScreen(),
-            PaymentsScreen(),
-            ProfileScreen(),
-          ],
+  Widget build(BuildContext context) {
+    final state = SubscriberScope.of(context);
+
+    if (state.isLoadingInitial) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator(color: AppColors.blue)),
+      );
+    }
+
+    if (state.loadError != null && state.profile == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const IconBadge(Icons.wifi_off_rounded, size: 56),
+                const SizedBox(height: 16),
+                Text(state.loadError!, textAlign: TextAlign.center),
+                const SizedBox(height: 20),
+                PrimaryButton(
+                  label: 'Повторить',
+                  icon: Icons.refresh_rounded,
+                  onPressed: () => state.loadAll(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(
+        statusBarColor: AppColors.background,
+      ),
+      child: Scaffold(
+        body: SafeArea(
+          top: true,
+          bottom: false,
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: const [
+              HomeScreen(),
+              ConsumptionScreen(),
+              PaymentsScreen(),
+              ProfileScreen(),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _BottomBar(
+          selectedIndex: _selectedIndex,
+          onSelected: (index) => setState(() => _selectedIndex = index),
         ),
       ),
-      bottomNavigationBar: _BottomBar(
-        selectedIndex: _selectedIndex,
-        onSelected: (index) => setState(() => _selectedIndex = index),
-      ),
-    ),
-  );
+    );
+  }
 }
 
 class _BottomBar extends StatelessWidget {

@@ -301,6 +301,12 @@ class StatusChip extends StatelessWidget {
   }
 }
 
+/// Backend has no endpoint yet for this action — show this instead of
+/// faking success (payments, meter readings, profile edits, feedback).
+void showFeatureUnavailable(BuildContext context) {
+  showAppSnack(context, 'Функция пока недоступна');
+}
+
 void showAppSnack(BuildContext context, String message, {bool error = false}) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()

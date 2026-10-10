@@ -167,7 +167,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _first;
   late final TextEditingController _last;
   late final TextEditingController _phone;
-  bool _loading = false;
+  final bool _loading = false;
   bool _initialized = false;
 
   @override
@@ -175,9 +175,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.didChangeDependencies();
     if (_initialized) return;
     final state = SubscriberScope.of(context);
-    _first = TextEditingController(text: state.firstName);
-    _last = TextEditingController(text: state.lastName);
-    _phone = TextEditingController(text: state.phone);
+    final nameParts = state.fullName.split(RegExp(r'\s+'));
+    _first = TextEditingController(
+      text: nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '',
+    );
+    _last = TextEditingController(text: nameParts.first);
+    _phone = TextEditingController();
     _initialized = true;
   }
 
@@ -192,14 +195,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate() || _loading) return;
-    setState(() => _loading = true);
-    await Future<void>.delayed(const Duration(milliseconds: 650));
-    if (!mounted) return;
-    SubscriberScope.of(
-      context,
-    ).saveProfile(first: _first.text, last: _last.text, newPhone: _phone.text);
-    showAppSnack(context, 'Профиль сохранен');
-    Navigator.pop(context);
+    // Backend has no endpoint to update the resident's profile yet.
+    showFeatureUnavailable(context);
   }
 
   String? _required(String? value) => value == null || value.trim().isEmpty
@@ -359,7 +356,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   final _subject = TextEditingController();
   final _message = TextEditingController();
   final _contact = TextEditingController();
-  bool _loading = false;
+  final bool _loading = false;
 
   @override
   void dispose() {
@@ -372,29 +369,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate() || _loading) return;
-    setState(() => _loading = true);
-    await Future<void>.delayed(const Duration(milliseconds: 750));
-    if (!mounted) return;
-    setState(() => _loading = false);
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(
-          Icons.check_circle_outline_rounded,
-          color: AppColors.success,
-          size: 34,
-        ),
-        title: const Text('Спасибо!'),
-        content: const Text('Ваше обращение отправлено.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Понятно'),
-          ),
-        ],
-      ),
-    );
-    if (mounted) Navigator.pop(context);
+    // Backend has no endpoint to submit a support request yet.
+    showFeatureUnavailable(context);
   }
 
   @override

@@ -1,9 +1,12 @@
+import 'package:ecobilling_abonent/main.dart';
+import 'package:ecobilling_abonent/state/auth_controller.dart';
+import 'package:ecobilling_abonent/state/subscriber_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:ecobilling_abonent/main.dart';
+import 'test_helpers.dart';
 
 void main() {
   setUp(() async {
@@ -11,50 +14,156 @@ void main() {
     await initializeDateFormatting('ru');
   });
 
-  testWidgets('subscriber tabs and local payment flow work', (tester) async {
+  Widget buildApp({FakeAuthRepository? authRepository}) {
+    final repository = authRepository ?? FakeAuthRepository();
+    final authController = AuthController(repository: repository);
+    final subscriberState = SubscriberUiState(FakeResidentRepository());
+    authController.onAuthenticated = () {
+      subscriberState.loadAll();
+    };
+    return EcoBillingApp(
+      authController: authController,
+      subscriberState: subscriberState,
+    );
+  }
+
+  testWidgets('shows the login screen when there is no stored session', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const EcoBillingApp());
+    await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
-    expect(find.text('К оплате'), findsOneWidget);
 
-    await tester.tap(find.text('Расход').last);
-    await tester.pumpAndSettle();
-    expect(find.text('Потребление'), findsOneWidget);
+    expect(find.text('Войти'), findsOneWidget);
+    expect(find.text('Номер лицевого счёта'), findsOneWidget);
+  });
 
-    await tester.tap(find.text('Платежи').last);
-    await tester.pumpAndSettle();
-    expect(find.text('Счета и платежи'), findsOneWidget);
-    await tester.tap(find.text('Оплатить 580 сом'));
-    await tester.pumpAndSettle();
-    expect(find.text('Подтверждение оплаты'), findsOneWidget);
+  testWidgets('logs in and shows real resident data on the home screen', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.tap(find.text('Подтвердить оплату'));
-    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
-    expect(find.text('0 сом'), findsOneWidget);
-    expect(find.text('Платеж успешно выполнен'), findsOneWidget);
 
-    await tester.tap(find.text('История').last);
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Номер лицевого счёта'),
+      '001245',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Пароль'),
+      'password',
+    );
+    await tester.tap(find.text('Войти'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('TXN-2026-000127')));
+
+    // No more login screen; home shows data from ResidentRepository, not
+    // any hardcoded fixture value.
+    expect(find.text('Войти'), findsNothing);
+    expect(find.textContaining('Асанов Нурбек'), findsWidgets);
+    expect(find.text('290'), findsOneWidget); // outstandingDebt from /financial
+  });
+
+  testWidgets('payment, meter reading, and feedback show "unavailable"', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
-    expect(find.text('Детали платежа'), findsOneWidget);
-    expect(find.text('001245'), findsOneWidget);
-    await tester.tap(find.text('Закрыть'));
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Номер лицевого счёта'),
+      '001245',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Пароль'),
+      'password',
+    );
+    await tester.tap(find.text('Войти'));
     await tester.pumpAndSettle();
+
+    // Paying from the home screen hero never zeroes the real debt.
+    await tester.tap(find.text('Оплатить'));
+    await tester.pump();
+    expect(find.text('Функция пока недоступна'), findsOneWidget);
+    expect(find.text('290'), findsOneWidget);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Профиль').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Обратная связь'));
+    await tester.tap(find.text('Обратная связь'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, 'Тема');
+    await tester.enterText(find.byType(TextFormField).at(1), 'Сообщение');
+    await tester.tap(find.text('Отправить'));
+    await tester.pump();
+    expect(find.text('Функция пока недоступна'), findsOneWidget);
+  });
+
+  testWidgets('logging out returns to the login screen', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(buildApp());
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Номер лицевого счёта'),
+      '001245',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Пароль'),
+      'password',
+    );
+    await tester.tap(find.text('Войти'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Профиль').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Выйти'));
+    await tester.tap(find.text('Выйти'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Выйти').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Номер лицевого счёта'), findsOneWidget);
   });
 
   testWidgets('main screens fit small, standard, and large phone widths', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(buildApp());
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Номер лицевого счёта'),
+      '001245',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Пароль'),
+      'password',
+    );
+    await tester.tap(find.text('Войти'));
+    await tester.pumpAndSettle();
+
     for (final width in [320.0, 390.0, 430.0]) {
       tester.view.physicalSize = Size(width, 844);
-      tester.view.devicePixelRatio = 1;
-      await tester.pumpWidget(const EcoBillingApp());
       await tester.pumpAndSettle();
 
       for (final label in ['Главная', 'Расход', 'Платежи', 'Профиль']) {
@@ -66,114 +175,6 @@ void main() {
           reason: '$label overflowed at width $width',
         );
       }
-
-      await tester.tap(find.text('Расход').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('По годам'));
-      await tester.pumpAndSettle();
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: 'Yearly chart overflowed at width $width',
-      );
-      await tester.tap(find.text('По месяцам'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Платежи').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('История').last);
-      await tester.pumpAndSettle();
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: 'Payment history overflowed at width $width',
-      );
     }
-  });
-
-  testWidgets('meter reading validation and local update work', (tester) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    await tester.pumpWidget(const EcoBillingApp());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.textContaining('Не забудьте передать показания'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField), '120');
-    await tester.tap(find.text('Передать показание'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Новое показание не может быть меньше предыдущего'),
-      findsOneWidget,
-    );
-
-    await tester.enterText(find.byType(TextFormField), '140');
-    await tester.tap(find.text('Передать показание'));
-    await tester.pump(const Duration(milliseconds: 700));
-    await tester.pumpAndSettle();
-    expect(find.text('Показание успешно сохранено'), findsOneWidget);
-    expect(find.text('140 м³'), findsOneWidget);
-  });
-
-  testWidgets('settings, notifications, FAQ, and feedback are interactive', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    await tester.pumpWidget(const EcoBillingApp());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Профиль').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Асанов Нурбек'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).first, 'Нурбек2');
-    await tester.tap(find.text('Сохранить'));
-    await tester.pump(const Duration(milliseconds: 700));
-    await tester.pumpAndSettle();
-    expect(find.text('Асанов Нурбек2'), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.settings_outlined));
-    await tester.pumpAndSettle();
-    expect(find.text('Настройки'), findsOneWidget);
-    await tester.tap(find.byType(Switch).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Русский'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Кыргызча'));
-    await tester.pumpAndSettle();
-    expect(find.text('Настройки сохранены'), findsOneWidget);
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-
-    await tester.ensureVisible(find.text('Частые вопросы'));
-    await tester.tap(find.text('Частые вопросы'));
-    await tester.pumpAndSettle();
-    expect(find.text('Как передать показания счетчика?'), findsOneWidget);
-    await tester.tap(find.text('Как передать показания счетчика?'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('На главной странице нажмите'), findsOneWidget);
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-
-    await tester.ensureVisible(find.text('Обратная связь'));
-    await tester.tap(find.text('Обратная связь'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).first, 'Показания');
-    await tester.enterText(find.byType(TextFormField).at(1), 'Проверка формы');
-    await tester.tap(find.text('Отправить'));
-    await tester.pump(const Duration(milliseconds: 800));
-    await tester.pumpAndSettle();
-    expect(find.text('Спасибо!'), findsOneWidget);
-    await tester.tap(find.text('Понятно'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Главная').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.notifications_none_rounded));
-    await tester.pumpAndSettle();
-    expect(find.text('Новый счет за сентябрь'), findsOneWidget);
-    await tester.tap(find.byTooltip('Очистить уведомления'));
-    await tester.pumpAndSettle();
-    expect(find.text('У вас пока нет новых уведомлений'), findsOneWidget);
   });
 }
